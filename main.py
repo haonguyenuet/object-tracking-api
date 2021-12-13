@@ -1,6 +1,8 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.testclient import TestClient
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
 
 import uvicorn
 
@@ -16,6 +18,26 @@ app = FastAPI(
     description="""Visit port 8088/docs for the FastAPI documentation.""",
     version="0.0.1",
 )
+
+templates = Jinja2Templates(directory="templates")
+
+
+# Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_origins=["*"],
+)
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["Process-Time"] = str(process_time)
+    return response
 
 # WS 
 class ConnectionManager:
@@ -48,7 +70,8 @@ html = """
     <body>
         <h1>WebSocket Test</h1>
         <label>Client ID: <input type="number" id="clientId" autocomplete="off" value="111"/></label>
-        <button onclick="connect(event)">Connect</button>
+        <button onclick="connect(event)">Connect WS</button>
+        <button onclick="fetchObjects(event)">Get Objects</button>
         <ul id='messages'>
         </ul>
         <script>
@@ -56,7 +79,12 @@ html = """
             function connect(event) {
                 var clientId = document.getElementById("clientId")
                 ws = new WebSocket("ws://localhost:8000/v1/mot/yolov5_ws/" + clientId.value);
+                var sendTime = (new Date()).getTime();
+
                 ws.onmessage = function(event) {
+                    var responseTime = (new Date()).getTime() - sendTime;
+                    console.log(responseTime)
+
                     var messages = document.getElementById('messages')
                     messages.innerHTML = ''
                     var message = document.createElement('li')
@@ -65,6 +93,16 @@ html = """
                     messages.appendChild(message)
                 };
                 event.preventDefault()
+            }
+
+            function fetchObjects(event){
+                var sendTime = (new Date()).getTime();
+
+                fetch('http://127.0.0.1:8000/v1/mot/yolov5')
+                .then((response) => {
+                    var responseTime = (new Date()).getTime() - sendTime;
+                    console.log("API" + responseTime)
+                });
             }
         </script>
     </body>
@@ -79,22 +117,19 @@ async def home():
 
 @app.get("/v1/mot/yolov5")
 def mot_yolov5():
-    start_time = time.time()
-    data = []
+    objects = []
     with open(video_txt_path, 'r') as f:
         lines = f.readlines()
         for line in lines:
             temp = line.split()
             x, y, w, h = map(float,temp[2:6])
-            data.append({
+            objects.append({
                 'x': x,
                 'y': y,
                 'w': w,
                 'h': h
             })
-    process_time = time.time() - start_time
-    print("Time: ", process_time)
-    return data
+    return objects
 
 @app.websocket("/v1/mot/yolov5_ws/{client_id}")
 async def mot_yolov5_ws(websocket: WebSocket, client_id: int):

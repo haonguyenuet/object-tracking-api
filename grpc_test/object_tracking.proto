@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package objecttracking;
+
+service ObjectTracking {
+   rpc Track(EmptyMsg) returns (stream Object) {}
+}
+
+message EmptyMsg{}
+
+message Object {
+   float  x = 1;
+   float  y = 2;
+   float  w = 3;
+   float  h = 4;
+ }

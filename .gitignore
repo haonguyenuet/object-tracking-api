@@ -56,3 +56,8 @@ pip-delete-this-directory.txt
 .venv
 venv/
 ENV/
+
+
+# local
+yolov5l.pt
+deep_sort_pytorch
