@@ -70,39 +70,54 @@ html = """
     <body>
         <h1>WebSocket Test</h1>
         <label>Client ID: <input type="number" id="clientId" autocomplete="off" value="111"/></label>
-        <button onclick="connect(event)">Connect WS</button>
-        <button onclick="fetchObjects(event)">Get Objects</button>
-        <ul id='messages'>
+        <button onclick="connect(event)">Connect WS</button><br>
+        <h2>Action</h2>
+        <button onclick="fetchObjects(event)">API</button>
+        <button onclick="fetchObjectsWS(event)">WS</button>
+
+        <h2>WebSocket Result</h2>
+        <ul id='ws_result'>
+        </ul>
+
+        <h2>API Result</h2>
+        <ul id='ws_result'>
         </ul>
         <script>
             var ws = null;
+            var sendtime = null;
             function connect(event) {
                 var clientId = document.getElementById("clientId")
                 ws = new WebSocket("ws://localhost:8000/v1/mot/yolov5_ws/" + clientId.value);
-                var sendTime = (new Date()).getTime();
 
                 ws.onmessage = function(event) {
                     var responseTime = (new Date()).getTime() - sendTime;
-                    console.log(responseTime)
+                    console.log("WS response time: " + responseTime)
 
-                    var messages = document.getElementById('messages')
-                    messages.innerHTML = ''
+                    var wsResult = document.getElementById('ws_result')
+                    wsResult.innerHTML = ''
                     var message = document.createElement('li')
                     var content = document.createTextNode(event.data)
                     message.appendChild(content)
-                    messages.appendChild(message)
+                    wsResult.appendChild(message)
                 };
                 event.preventDefault()
             }
 
             function fetchObjects(event){
-                var sendTime = (new Date()).getTime();
-
+                sendTime = (new Date()).getTime();
                 fetch('http://127.0.0.1:8000/v1/mot/yolov5')
                 .then((response) => {
                     var responseTime = (new Date()).getTime() - sendTime;
-                    console.log("API" + responseTime)
+                    console.log("API response time: " + responseTime)
                 });
+                event.preventDefault()
+
+            }
+
+            function fetchObjectsWS(event){
+                sendTime = (new Date()).getTime();
+                ws.send("fetch_objects")
+                event.preventDefault()
             }
         </script>
     </body>
@@ -129,18 +144,18 @@ def mot_yolov5():
                 'w': w,
                 'h': h
             })
-    return objects
+    return {
+        "objects": objects,
+        "quantity":  len(objects)
+    }
 
 @app.websocket("/v1/mot/yolov5_ws/{client_id}")
 async def mot_yolov5_ws(websocket: WebSocket, client_id: int):
     await con_mgr.connect(websocket)    
     try:
-        while path.exists(video_txt_path):
-            f = open(video_txt_path, 'r')
-            pre_content = ''
-            curr_content = f.read()
-
-            if pre_content != curr_content:
+       while True:
+            receivied_data = await websocket.receive_text()
+            if receivied_data == "fetch_objects":
                 objects = []
                 f = open(video_txt_path, 'r')
                 lines = f.readlines()
@@ -159,7 +174,6 @@ async def mot_yolov5_ws(websocket: WebSocket, client_id: int):
                     "objects": objects,
                     "quantity":  len(objects)
                 })
-            pre_content = curr_content
     except WebSocketDisconnect:
         con_mgr.disconnect(websocket)
         await con_mgr.broadcast(f"Client #{client_id} left the chat")
